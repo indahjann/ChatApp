@@ -1,6 +1,162 @@
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
-# Getting Started
+# ChatApp - Real-time Chat Application
+
+Aplikasi chat real-time berbasis React Native dengan Firebase sebagai backend. Dibangun untuk tugas mata kuliah **Pengembangan Berbasis Platform (PBP)**.
+
+## 📱 Fitur
+
+- ✅ Autentikasi anonim menggunakan Firebase Auth
+- ✅ Real-time messaging dengan Firestore
+- ✅ Interface yang simple dan user-friendly
+- ✅ Support untuk Android dan iOS
+- ✅ Menampilkan nama pengguna pada setiap pesan
+- ✅ Timestamp otomatis pada setiap pesan
+
+## 🛠️ Teknologi yang Digunakan
+
+- **React Native** (v0.82.1) - Framework untuk mobile app development
+- **TypeScript** (v5.8.3) - Type safety dan better developer experience
+- **Firebase** (v12.6.0)
+  - Firebase Authentication (Anonymous Sign-in)
+  - Cloud Firestore (Real-time database)
+- **React Navigation** (v7.1.20) - Navigasi antar screen
+- **Jest** - Unit testing
+
+## 📋 Prerequisites
+
+Sebelum menjalankan aplikasi, pastikan Anda sudah menginstal:
+
+- Node.js (>= 20)
+- npm atau yarn
+- Android Studio (untuk Android development)
+- Xcode (untuk iOS development - macOS only)
+- Java Development Kit (JDK)
+- React Native CLI
+
+## 🚀 Instalasi
+
+1. Clone repository ini
+```bash
+git clone <repository-url>
+cd ChatApp
+```
+
+2. Install dependencies
+```bash
+npm install
+```
+
+3. Install iOS dependencies (macOS only)
+```bash
+cd ios && pod install && cd ..
+```
+
+## ▶️ Menjalankan Aplikasi
+
+### Android
+```bash
+npm run android
+```
+
+### iOS (macOS only)
+```bash
+npm run ios
+```
+
+### Metro Bundler
+Jika ingin menjalankan Metro bundler secara terpisah:
+```bash
+npm start
+```
+
+## 🧪 Testing
+
+Menjalankan unit tests:
+```bash
+npm test
+```
+
+## 📂 Struktur Project
+
+```
+ChatApp/
+├── android/              # Native Android code
+├── ios/                  # Native iOS code
+├── screens/              # Screen components
+│   ├── LoginScreen.tsx   # Login screen untuk input nama
+│   └── ChatScreen.tsx    # Main chat screen
+├── __tests__/            # Test files
+├── App.tsx               # Root component
+├── firebase.ts           # Firebase configuration
+├── package.json          # Dependencies
+└── tsconfig.json         # TypeScript configuration
+```
+
+## 🔧 Konfigurasi Firebase
+
+Aplikasi ini menggunakan Firebase untuk autentikasi dan database. Konfigurasi Firebase dapat ditemukan di file `firebase.ts`. 
+
+Jika ingin menggunakan Firebase project sendiri:
+
+1. Buat project baru di [Firebase Console](https://console.firebase.google.com/)
+2. Enable Firebase Authentication (Anonymous Sign-in)
+3. Buat Firestore Database
+4. Salin konfigurasi Firebase Anda ke `firebase.ts`
+
+## 💡 Cara Menggunakan
+
+1. Jalankan aplikasi di emulator atau device
+2. Masukkan nama Anda di halaman login
+3. Klik "Masuk Chat" untuk masuk ke ruang chat
+4. Ketik pesan dan klik "Kirim" untuk mengirim pesan
+5. Pesan akan muncul secara real-time untuk semua pengguna
+
+## 🎨 Screenshots
+
+### Login Screen
+Halaman untuk memasukkan nama pengguna sebelum masuk ke chat room.
+
+### Chat Screen
+Halaman utama chat dengan fitur real-time messaging. Pesan dari pengguna sendiri akan ditampilkan dengan style yang berbeda.
+
+## 📝 Catatan Pengembangan
+
+- Aplikasi menggunakan Firebase Anonymous Authentication untuk simplicity
+- Semua pesan disimpan di Firestore collection bernama `messages`
+- Pesan diurutkan berdasarkan `createdAt` timestamp
+- Styling menggunakan React Native StyleSheet
+
+## 🐛 Troubleshooting
+
+### Build Error di Android
+```bash
+cd android && ./gradlew clean && cd ..
+npm run android
+```
+
+### Metro Bundler Cache Issue
+```bash
+npm start -- --reset-cache
+```
+
+### Pod Install Error (iOS)
+```bash
+cd ios && pod deintegrate && pod install && cd ..
+```
+
+## 👨‍💻 Author
+
+Tugas Mata Kuliah Pengembangan Berbasis Platform  
+Semester 5
+
+## 📄 License
+
+This project is created for educational purposes.
+
+---
+
+**Note:** Pastikan untuk tidak mempublikasikan Firebase API keys di production. Gunakan environment variables dan implementasikan Firebase Security Rules yang proper.
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
