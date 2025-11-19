@@ -9,6 +9,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import {
   addDoc,
@@ -21,6 +22,7 @@ import { messagesCollection } from '../firebase';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, MessageType } from '../types';
 import { authService } from '../services/authService';
+import { mmkvService } from '../services/mmkvService';
 import { CommonActions } from '@react-navigation/native';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
@@ -30,6 +32,8 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   const [message, setMessage] = useState<string>('');
   const [messages, setMessages] = useState<MessageType[]>([]);
+  const [isLoadingCache, setIsLoadingCache] = useState<boolean>(true);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
 
   // Set logout button in header
   useEffect(() => {
@@ -42,24 +46,53 @@ export default function ChatScreen({ route, navigation }: Props) {
     });
   }, [navigation]);
 
+  // Phase 2: Load messages from MMKV cache first (instant UI)
   useEffect(() => {
+    console.log('=== Loading Chat History from Cache ===');
+    const cachedMessages = mmkvService.loadMessages();
+    
+    if (cachedMessages.length > 0) {
+      setMessages(cachedMessages);
+      console.log('✅ Loaded from MMKV cache:', cachedMessages.length, 'messages');
+    }
+    
+    setIsLoadingCache(false);
+  }, []);
+
+  // Phase 2: Subscribe to Firestore (background sync)
+  useEffect(() => {
+    if (isLoadingCache) return; // Wait for cache to load first
+
+    console.log('=== Starting Firestore Sync ===');
     const q = query(messagesCollection, orderBy('createdAt', 'asc'));
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list: MessageType[] = [];
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: MessageType[] = [];
 
-      snapshot.forEach((doc) => {
-        list.push({
-          id: doc.id,
-          ...(doc.data() as Omit<MessageType, 'id'>),
+        snapshot.forEach((doc) => {
+          list.push({
+            id: doc.id,
+            ...(doc.data() as Omit<MessageType, 'id'>),
+          });
         });
-      });
 
-      setMessages(list);
-    });
+        setMessages(list);
+        // Save to MMKV cache for offline use
+        mmkvService.saveMessages(list);
+        setIsOnline(true);
+        console.log('✅ Firestore sync complete:', list.length, 'messages');
+      },
+      (error) => {
+        console.error('❌ Firestore sync error:', error);
+        setIsOnline(false);
+        // Keep using cached messages when offline
+      }
+    );
 
     return () => unsub();
-  }, []);
+  }, [isLoadingCache]);
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Apakah Anda yakin ingin keluar?', [
@@ -123,22 +156,46 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ padding: 10 }}
-      />
+      {/* Offline Indicator */}
+      {!isOnline && (
+        <View style={styles.offlineBar}>
+          <Text style={styles.offlineText}>
+            📵 Offline - Showing cached messages
+          </Text>
+        </View>
+      )}
 
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Ketik pesan..."
-          value={message}
-          onChangeText={setMessage}
-        />
-        <Button title="Kirim" onPress={sendMessage} />
-      </View>
+      {/* Loading indicator while fetching cache */}
+      {isLoadingCache ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Loading chat history...</Text>
+        </View>
+      ) : (
+        <>
+          <FlatList
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={{ padding: 10 }}
+          />
+
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="Ketik pesan..."
+              value={message}
+              onChangeText={setMessage}
+              editable={isOnline} // Disable input when offline
+            />
+            <Button 
+              title="Kirim" 
+              onPress={sendMessage}
+              disabled={!isOnline} // Disable button when offline
+            />
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -183,5 +240,26 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 6,
     backgroundColor: '#fff',
+  },
+  // Phase 2: New styles for offline/loading states
+  offlineBar: {
+    backgroundColor: '#ff9800',
+    padding: 10,
+    alignItems: 'center',
+  },
+  offlineText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
 });
