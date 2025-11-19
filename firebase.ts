@@ -12,6 +12,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocs,
   where,
 } from "firebase/firestore";
 import {
@@ -34,15 +35,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-
-// Disable Firestore temporarily due to connection issues
-// const db = getFirestore(app);
-const db = null as any; // Placeholder
+const db = getFirestore(app);
 
 // FIXED
-// export const messagesCollection = 
-//   collection(db, "messages") as CollectionReference<DocumentData>;
-export const messagesCollection = null as any; // Placeholder
+export const messagesCollection = 
+  collection(db, "messages") as CollectionReference<DocumentData>;
 
 export {
   auth,
@@ -60,6 +57,7 @@ export {
   doc,
   setDoc,
   getDoc,
+  getDocs,
   where,
 };
 

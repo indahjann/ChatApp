@@ -1,4 +1,4 @@
-// screens/LoginScreen.tsx (Updated)
+// screens/LoginScreen.tsx (Phase 1 Final)
 import React, { useState } from 'react';
 import {
   View,
@@ -17,22 +17,22 @@ import { authService } from '../services/authService';
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
-  const [email, setEmail] = useState<string>('');
+  const [usernameOrEmail, setUsernameOrEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
   const handleLogin = async () => {
     // Validation
-    if (!email.trim() || !password) {
-      Alert.alert('Error', 'Email dan password harus diisi');
+    if (!usernameOrEmail.trim() || !password) {
+      Alert.alert('Error', 'Username/Email dan password harus diisi');
       return;
     }
 
     setLoading(true);
 
     try {
-      const userData = await authService.loginUser(email, password);
-      
+      const userData = await authService.loginUser(usernameOrEmail.trim(), password);
+
       // Navigate to Chat
       navigation.replace('Chat', {
         username: userData.username,
@@ -48,13 +48,13 @@ export default function LoginScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Login</Text>
+      <Text style={styles.subtitle}>Masuk ke ChatApp</Text>
 
       <TextInput
         style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
+        placeholder="Username atau Email"
+        value={usernameOrEmail}
+        onChangeText={setUsernameOrEmail}
         autoCapitalize="none"
         editable={!loading}
       />
@@ -69,7 +69,7 @@ export default function LoginScreen({ navigation }: Props) {
       />
 
       {loading ? (
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
       ) : (
         <Button title="Masuk" onPress={handleLogin} />
       )}
@@ -95,10 +95,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 8,
+    color: '#333',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 40,
+    color: '#666',
   },
   input: {
     borderWidth: 1,
@@ -107,6 +114,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 15,
     fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  loader: {
+    marginVertical: 20,
   },
   linkContainer: {
     marginTop: 20,

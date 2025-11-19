@@ -1,4 +1,4 @@
-// screens/RegisterScreen.tsx
+// screens/RegisterScreen.tsx (Phase 1 Final)
 import React, { useState } from 'react';
 import {
   View,
@@ -54,16 +54,21 @@ export default function RegisterScreen({ navigation }: Props) {
 
     try {
       console.log('Starting registration...');
-      const userData = await authService.registerUser(username, email, password);
+      const userData = await authService.registerUser(
+        username.trim(),
+        email.trim(),
+        password
+      );
 
-      console.log('Registration successful, navigating to Chat...');
-      
-      // Langsung ke Chat setelah registrasi berhasil
+      console.log('Registration successful!');
+
+      // Langsung navigate ke Chat
       navigation.replace('Chat', {
         username: userData.username,
         userId: userData.uid,
       });
     } catch (error: any) {
+      console.error('Registration error:', error);
       Alert.alert('Error', error.message || 'Registrasi gagal');
     } finally {
       setLoading(false);
@@ -73,6 +78,7 @@ export default function RegisterScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Registrasi</Text>
+      <Text style={styles.subtitle}>Buat akun baru</Text>
 
       <TextInput
         style={styles.input}
@@ -112,7 +118,7 @@ export default function RegisterScreen({ navigation }: Props) {
       />
 
       {loading ? (
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
       ) : (
         <Button title="Daftar" onPress={handleRegister} />
       )}
@@ -138,10 +144,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 8,
+    color: '#333',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 40,
+    color: '#666',
   },
   input: {
     borderWidth: 1,
@@ -150,6 +163,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 15,
     fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  loader: {
+    marginVertical: 20,
   },
   linkContainer: {
     marginTop: 20,
