@@ -9,10 +9,17 @@ import {
   onSnapshot,
   CollectionReference,
   DocumentData,
+  doc,
+  setDoc,
+  getDoc,
+  where,
 } from "firebase/firestore";
 import {
   getAuth,
-  signInAnonymously,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  UserCredential,
   onAuthStateChanged,
 } from "firebase/auth";
 
@@ -27,11 +34,15 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// Disable Firestore temporarily due to connection issues
+// const db = getFirestore(app);
+const db = null as any; // Placeholder
 
 // FIXED
-export const messagesCollection = 
-  collection(db, "messages") as CollectionReference<DocumentData>;
+// export const messagesCollection = 
+//   collection(db, "messages") as CollectionReference<DocumentData>;
+export const messagesCollection = null as any; // Placeholder
 
 export {
   auth,
@@ -42,6 +53,14 @@ export {
   query,
   orderBy,
   onSnapshot,
-  signInAnonymously,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  doc,
+  setDoc,
+  getDoc,
+  where,
 };
+
+export type { UserCredential };
