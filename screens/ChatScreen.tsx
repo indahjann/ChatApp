@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import {
   addDoc,
@@ -23,7 +24,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, MessageType } from '../types';
 import { authService } from '../services/authService';
 import { mmkvService } from '../services/mmkvService';
+import { imageService } from '../services/imageService';
 import { CommonActions } from '@react-navigation/native';
+import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -34,6 +37,7 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [isLoadingCache, setIsLoadingCache] = useState<boolean>(true);
   const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
 
   // Set logout button in header
   useEffect(() => {
@@ -138,6 +142,62 @@ export default function ChatScreen({ route, navigation }: Props) {
     }
   };
 
+  // Phase 3: Image picker and upload
+  const pickImage = async () => {
+    if (!isOnline) {
+      Alert.alert('Offline', 'Tidak dapat upload gambar saat offline');
+      return;
+    }
+
+    try {
+      const result: ImagePickerResponse = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.7,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      });
+
+      if (result.didCancel) {
+        console.log('📷 User cancelled image picker');
+        return;
+      }
+
+      if (result.errorCode) {
+        Alert.alert('Error', result.errorMessage || 'Gagal memilih gambar');
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert('Error', 'Tidak ada gambar yang dipilih');
+        return;
+      }
+
+      setIsUploadingImage(true);
+      console.log('📤 Uploading image...');
+
+      // Upload to Firebase Storage
+      const imageUrl = await imageService.uploadImage(asset.uri, userId);
+
+      // Send message with image
+      await addDoc(messagesCollection, {
+        text: message.trim() || '📷 Foto',
+        user: username,
+        userId: userId,
+        imageUrl: imageUrl,
+        createdAt: serverTimestamp(),
+      });
+
+      setMessage('');
+      Alert.alert('Sukses', 'Gambar berhasil dikirim!');
+    } catch (error) {
+      console.error('❌ Error picking/uploading image:', error);
+      Alert.alert('Error', 'Gagal upload gambar');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   const renderItem = ({ item }: { item: MessageType }) => {
     const isMyMessage = item.userId === userId;
 
@@ -149,6 +209,16 @@ export default function ChatScreen({ route, navigation }: Props) {
         ]}
       >
         <Text style={styles.sender}>{item.user}</Text>
+        
+        {/* Phase 3: Display image if exists */}
+        {item.imageUrl && (
+          <Image 
+            source={{ uri: item.imageUrl }}
+            style={styles.messageImage}
+            resizeMode="cover"
+          />
+        )}
+        
         <Text style={styles.messageText}>{item.text}</Text>
       </View>
     );
@@ -181,17 +251,30 @@ export default function ChatScreen({ route, navigation }: Props) {
           />
 
           <View style={styles.inputRow}>
+            {/* Phase 3: Image picker button */}
+            <TouchableOpacity 
+              onPress={pickImage}
+              style={styles.imageButton}
+              disabled={!isOnline || isUploadingImage}
+            >
+              {isUploadingImage ? (
+                <ActivityIndicator size="small" color="#007AFF" />
+              ) : (
+                <Text style={styles.imageButtonText}>📷</Text>
+              )}
+            </TouchableOpacity>
+
             <TextInput
               style={styles.input}
               placeholder="Ketik pesan..."
               value={message}
               onChangeText={setMessage}
-              editable={isOnline} // Disable input when offline
+              editable={isOnline && !isUploadingImage}
             />
             <Button 
               title="Kirim" 
               onPress={sendMessage}
-              disabled={!isOnline} // Disable button when offline
+              disabled={!isOnline || isUploadingImage}
             />
           </View>
         </>
@@ -231,6 +314,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: '#ddd',
     backgroundColor: '#fff',
+    alignItems: 'center',
   },
   input: {
     flex: 1,
@@ -261,5 +345,24 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: '#666',
+  },
+  // Phase 3: Image styles
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  imageButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  imageButtonText: {
+    fontSize: 24,
   },
 });

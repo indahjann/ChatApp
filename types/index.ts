@@ -11,6 +11,7 @@ export type MessageType = {
   user: string;
   userId: string;
   createdAt: { seconds: number; nanoseconds: number } | null;
+  imageUrl?: string; // Phase 3: Optional image URL
 };
 
 export type AuthCredentials = {

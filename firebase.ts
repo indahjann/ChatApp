@@ -23,6 +23,14 @@ import {
   UserCredential,
   onAuthStateChanged,
 } from "firebase/auth";
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  uploadString,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAGCWkJ7g5GY_x3ZKHI-A5ppNv3lvgHulQ",
@@ -36,6 +44,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // FIXED
 export const messagesCollection = 
@@ -44,6 +53,7 @@ export const messagesCollection =
 export {
   auth,
   db,
+  storage,
   collection,
   addDoc,
   serverTimestamp,
@@ -59,6 +69,11 @@ export {
   getDoc,
   getDocs,
   where,
+  ref,
+  uploadBytes,
+  uploadString,
+  getDownloadURL,
+  deleteObject,
 };
 
 export type { UserCredential };
