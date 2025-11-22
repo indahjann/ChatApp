@@ -1,10 +1,12 @@
 // services/imageService.ts
-import { storage, ref, uploadString, getDownloadURL, deleteObject } from '../firebase';
+import { storage, ref, getDownloadURL, deleteObject } from '../firebase';
 import { mmkvService } from './mmkvService';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 
 class ImageService {
   /**
    * Upload image to Firebase Storage
+   * Production-ready method using react-native-blob-util
    * @param uri Local image URI from image picker
    * @param userId User ID for organizing uploads
    * @returns Download URL of uploaded image
@@ -13,58 +15,174 @@ class ImageService {
     try {
       console.log('📤 Starting image upload:', uri);
 
-      // Create unique filename
+      // Generate unique filename
       const timestamp = Date.now();
       const filename = `${userId}_${timestamp}.jpg`;
-      const storageRef = ref(storage, `chat-images/${filename}`);
+      const storagePath = `chat-images/${filename}`;
 
-      // Convert image to base64
-      // For React Native, we need to read file as base64
-      const base64 = await this.uriToBase64(uri);
-      
-      console.log('📦 Uploading base64 image...');
+      // Get Firebase Storage bucket
+      const bucket = storage.app.options.storageBucket;
+      if (!bucket) {
+        throw new Error('Storage bucket not configured');
+      }
 
-      // Upload as base64 string
-      const snapshot = await uploadString(storageRef, base64, 'data_url');
-      console.log('✅ Upload complete:', snapshot.metadata.fullPath);
+      // Clean URI (remove file:// prefix if exists)
+      const cleanUri = uri.replace('file://', '');
 
-      // Get download URL
+      console.log('📦 Uploading to Firebase Storage...');
+
+      // Firebase Storage REST API endpoint
+      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(storagePath)}`;
+
+      // Upload using react-native-blob-util
+      const response = await ReactNativeBlobUtil.fetch(
+        'POST',
+        uploadUrl,
+        {
+          'Content-Type': 'image/jpeg',
+        },
+        ReactNativeBlobUtil.wrap(cleanUri)
+      );
+
+      // Check response status
+      const status = response.info().status;
+      if (status !== 200) {
+        const errorText = await response.text();
+        console.error('❌ Upload failed:', status, errorText);
+        throw new Error(`Upload failed with status ${status}`);
+      }
+
+      console.log('✅ Upload complete!');
+
+      // Get download URL from Firebase
+      const storageRef = ref(storage, storagePath);
       const downloadURL = await getDownloadURL(storageRef);
       console.log('🔗 Download URL:', downloadURL);
 
-      // Cache the URL in MMKV
-      const imageId = filename;
-      mmkvService.cacheImageUrl(imageId, downloadURL);
-      console.log('💾 Cached to MMKV:', imageId);
+      // Cache the URL in MMKV for offline access
+      mmkvService.cacheImageUrl(filename, downloadURL);
+      console.log('💾 Cached to MMKV:', filename);
 
       return downloadURL;
     } catch (error) {
       console.error('❌ Error uploading image:', error);
+      
+      // User-friendly error message
+      if (error instanceof Error) {
+        if (error.message.includes('Network')) {
+          throw new Error('Koneksi internet bermasalah. Silakan coba lagi.');
+        }
+        throw new Error('Gagal upload gambar. Silakan coba lagi.');
+      }
+      
+      throw new Error('Gagal upload gambar');
+    }
+  }
+
+  /**
+   * Upload image with progress tracking
+   * Great for showing upload progress to users
+   * @param uri Local image URI
+   * @param userId User ID
+   * @param onProgress Progress callback (0-100)
+   * @returns Download URL
+   */
+  async uploadImageWithProgress(
+    uri: string, 
+    userId: string,
+    onProgress?: (progress: number) => void
+  ): Promise<string> {
+    try {
+      console.log('📤 Starting upload with progress tracking:', uri);
+
+      const timestamp = Date.now();
+      const filename = `${userId}_${timestamp}.jpg`;
+      const storagePath = `chat-images/${filename}`;
+      const bucket = storage.app.options.storageBucket;
+      const cleanUri = uri.replace('file://', '');
+
+      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(storagePath)}`;
+
+      // Upload with progress callback
+      const response = await ReactNativeBlobUtil.fetch(
+        'POST',
+        uploadUrl,
+        {
+          'Content-Type': 'image/jpeg',
+        },
+        ReactNativeBlobUtil.wrap(cleanUri)
+      ).uploadProgress({ interval: 250 }, (written, total) => {
+        const progress = Math.round((written / total) * 100);
+        console.log(`📊 Upload progress: ${progress}%`);
+        onProgress?.(progress);
+      });
+
+      if (response.info().status !== 200) {
+        throw new Error(`Upload failed: ${response.info().status}`);
+      }
+
+      // Get download URL
+      const storageRef = ref(storage, storagePath);
+      const downloadURL = await getDownloadURL(storageRef);
+
+      mmkvService.cacheImageUrl(filename, downloadURL);
+      return downloadURL;
+    } catch (error) {
+      console.error('❌ Error in upload with progress:', error);
       throw error;
     }
   }
 
   /**
-   * Convert URI to base64 data URL
-   * @param uri Image URI
-   * @returns Base64 data URL
+   * Upload with authentication token (if Storage Rules require auth)
+   * @param uri Local image URI
+   * @param userId User ID
+   * @returns Download URL
    */
-  private async uriToBase64(uri: string): Promise<string> {
+  async uploadImageWithAuth(uri: string, userId: string): Promise<string> {
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64data = reader.result as string;
-          resolve(base64data);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      console.log('📤 Starting authenticated upload:', uri);
+
+      const timestamp = Date.now();
+      const filename = `${userId}_${timestamp}.jpg`;
+      const storagePath = `chat-images/${filename}`;
+
+      // Get Firebase auth token
+      const { auth } = await import('../firebase');
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const token = await user.getIdToken();
+      const bucket = storage.app.options.storageBucket;
+      const cleanUri = uri.replace('file://', '');
+
+      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(storagePath)}`;
+
+      // Upload with Authorization header
+      const response = await ReactNativeBlobUtil.fetch(
+        'POST',
+        uploadUrl,
+        {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'image/jpeg',
+        },
+        ReactNativeBlobUtil.wrap(cleanUri)
+      );
+
+      if (response.info().status !== 200) {
+        throw new Error(`Upload failed: ${response.info().status}`);
+      }
+
+      // Get download URL
+      const storageRef = ref(storage, storagePath);
+      const downloadURL = await getDownloadURL(storageRef);
+
+      mmkvService.cacheImageUrl(filename, downloadURL);
+      return downloadURL;
     } catch (error) {
-      console.error('❌ Error converting to base64:', error);
+      console.error('❌ Error in authenticated upload:', error);
       throw error;
     }
   }
@@ -75,7 +193,6 @@ class ImageService {
    */
   async deleteImage(imageUrl: string): Promise<void> {
     try {
-      // Extract path from URL
       const storageRef = ref(storage, imageUrl);
       await deleteObject(storageRef);
       console.log('🗑️ Image deleted from Storage');
@@ -86,7 +203,7 @@ class ImageService {
   }
 
   /**
-   * Get cached image URL or fetch from network
+   * Get cached image URL or use fallback
    * @param imageId Image identifier
    * @param fallbackUrl Fallback URL if cache miss
    * @returns Image URL
@@ -98,19 +215,38 @@ class ImageService {
       return cached;
     }
     
-    // Cache for next time
     mmkvService.cacheImageUrl(imageId, fallbackUrl);
     return fallbackUrl;
   }
 
   /**
-   * Compress image before upload (optional enhancement)
-   * For now, we upload as-is. Can add compression later.
+   * Download image to local storage for offline viewing
+   * @param imageUrl Remote image URL
+   * @param imageId Unique identifier
+   * @returns Local file path
    */
-  // async compressImage(uri: string): Promise<string> {
-  //   // TODO: Add image compression using react-native-image-resizer
-  //   return uri;
-  // }
+  async downloadImageForOffline(imageUrl: string, imageId: string): Promise<string> {
+    try {
+      const localPath = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${imageId}.jpg`;
+
+      console.log('⬇️ Downloading image for offline:', imageUrl);
+
+      await ReactNativeBlobUtil.config({
+        path: localPath,
+        fileCache: true,
+      }).fetch('GET', imageUrl);
+
+      console.log('✅ Image downloaded to:', localPath);
+
+      // Cache the local path
+      mmkvService.cacheImageUrl(imageId, localPath);
+
+      return localPath;
+    } catch (error) {
+      console.error('❌ Error downloading image:', error);
+      throw error;
+    }
+  }
 }
 
 export const imageService = new ImageService();

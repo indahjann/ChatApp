@@ -1,4 +1,4 @@
-// screens/ChatScreen.tsx (Updated)
+// screens/ChatScreen.tsx (Base64 Version - No Firebase Storage)
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -11,7 +11,9 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Modal,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/Feather';
 import {
   addDoc,
   serverTimestamp,
@@ -24,10 +26,8 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, MessageType } from '../types';
 import { authService } from '../services/authService';
 import { mmkvService } from '../services/mmkvService';
-import { imageService } from '../services/imageService';
 import { CommonActions } from '@react-navigation/native';
 import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
-
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
 export default function ChatScreen({ route, navigation }: Props) {
@@ -38,19 +38,20 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [isLoadingCache, setIsLoadingCache] = useState<boolean>(true);
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Set logout button in header
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <TouchableOpacity onPress={handleLogout} style={{ marginRight: 10 }}>
-          <Text style={{ color: '#007AFF', fontSize: 16 }}>Logout</Text>
+          <Text style={{ fontSize: 24 }}>🚪</Text>
         </TouchableOpacity>
       ),
     });
   }, [navigation]);
 
-  // Phase 2: Load messages from MMKV cache first (instant UI)
+  // Load messages from MMKV cache first
   useEffect(() => {
     console.log('=== Loading Chat History from Cache ===');
     const cachedMessages = mmkvService.loadMessages();
@@ -63,9 +64,9 @@ export default function ChatScreen({ route, navigation }: Props) {
     setIsLoadingCache(false);
   }, []);
 
-  // Phase 2: Subscribe to Firestore (background sync)
+  // Subscribe to Firestore
   useEffect(() => {
-    if (isLoadingCache) return; // Wait for cache to load first
+    if (isLoadingCache) return;
 
     console.log('=== Starting Firestore Sync ===');
     const q = query(messagesCollection, orderBy('createdAt', 'asc'));
@@ -83,7 +84,6 @@ export default function ChatScreen({ route, navigation }: Props) {
         });
 
         setMessages(list);
-        // Save to MMKV cache for offline use
         mmkvService.saveMessages(list);
         setIsOnline(true);
         console.log('✅ Firestore sync complete:', list.length, 'messages');
@@ -91,7 +91,6 @@ export default function ChatScreen({ route, navigation }: Props) {
       (error) => {
         console.error('❌ Firestore sync error:', error);
         setIsOnline(false);
-        // Keep using cached messages when offline
       }
     );
 
@@ -110,7 +109,6 @@ export default function ChatScreen({ route, navigation }: Props) {
         onPress: async () => {
           try {
             await authService.logoutUser();
-            // Reset navigation to Login screen
             navigation.dispatch(
               CommonActions.reset({
                 index: 0,
@@ -142,7 +140,7 @@ export default function ChatScreen({ route, navigation }: Props) {
     }
   };
 
-  // Phase 3: Image picker and upload
+  // ✅ NEW: Base64 Image Picker (No Firebase Storage needed)
   const pickImage = async () => {
     if (!isOnline) {
       Alert.alert('Offline', 'Tidak dapat upload gambar saat offline');
@@ -152,9 +150,10 @@ export default function ChatScreen({ route, navigation }: Props) {
     try {
       const result: ImagePickerResponse = await launchImageLibrary({
         mediaType: 'photo',
-        quality: 0.7,
-        maxWidth: 1024,
-        maxHeight: 1024,
+        quality: 0.5,        // ← Kompress lebih agresif
+        maxWidth: 800,       // ← Resize ke 800px
+        maxHeight: 800,
+        includeBase64: true, // ← PENTING: Minta base64
       });
 
       if (result.didCancel) {
@@ -168,23 +167,42 @@ export default function ChatScreen({ route, navigation }: Props) {
       }
 
       const asset = result.assets?.[0];
-      if (!asset?.uri) {
+      if (!asset?.base64) {
         Alert.alert('Error', 'Tidak ada gambar yang dipilih');
         return;
       }
 
       setIsUploadingImage(true);
-      console.log('📤 Uploading image...');
+      console.log('📤 Processing image...');
 
-      // Upload to Firebase Storage
-      const imageUrl = await imageService.uploadImage(asset.uri, userId);
+      // Buat full base64 string
+      const imageType = asset.type || 'image/jpeg';
+      const fullBase64 = `data:${imageType};base64,${asset.base64}`;
 
-      // Send message with image
+      // ⚠️ CEK UKURAN (Firestore limit ~1MB per document)
+      const sizeInBytes = fullBase64.length;
+      const sizeInKB = Math.round(sizeInBytes / 1024);
+      const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+
+      console.log(`📊 Image size: ${sizeInKB}KB (${sizeInMB}MB)`);
+
+      // Firestore document max size = 1MB
+      // Tapi sebaiknya jangan sampai 1MB penuh, sisakan untuk field lain
+      if (sizeInBytes > 1048487) { // ~1MB - 100KB buffer
+        Alert.alert(
+          'Gambar Terlalu Besar', 
+          `Ukuran: ${sizeInKB}KB\n\nMaksimal ~1000KB.\nSilakan pilih gambar yang lebih kecil atau foto ulang dengan kualitas lebih rendah.`
+        );
+        setIsUploadingImage(false);
+        return;
+      }
+
+      // Send message with base64 image
       await addDoc(messagesCollection, {
         text: message.trim() || '📷 Foto',
         user: username,
         userId: userId,
-        imageUrl: imageUrl,
+        imageUrl: fullBase64, // ← Simpan base64 langsung
         createdAt: serverTimestamp(),
       });
 
@@ -210,13 +228,20 @@ export default function ChatScreen({ route, navigation }: Props) {
       >
         <Text style={styles.sender}>{item.user}</Text>
         
-        {/* Phase 3: Display image if exists */}
+        {/* Display image (Base64 atau URL) */}
         {item.imageUrl && (
-          <Image 
-            source={{ uri: item.imageUrl }}
-            style={styles.messageImage}
-            resizeMode="cover"
-          />
+          <TouchableOpacity onPress={() => setSelectedImage(item.imageUrl!)}>
+            <Image 
+              source={{ uri: item.imageUrl }}
+              style={styles.messageImage}
+              resizeMode="cover"
+              onError={(e) => {
+                console.error('❌ Image load error:', e.nativeEvent.error);
+              }}
+              onLoadStart={() => console.log('🔄 Loading image...')}
+              onLoadEnd={() => console.log('✅ Image loaded')}
+            />
+          </TouchableOpacity>
         )}
         
         <Text style={styles.messageText}>{item.text}</Text>
@@ -235,7 +260,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         </View>
       )}
 
-      {/* Loading indicator while fetching cache */}
+      {/* Loading indicator */}
       {isLoadingCache ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
@@ -251,7 +276,7 @@ export default function ChatScreen({ route, navigation }: Props) {
           />
 
           <View style={styles.inputRow}>
-            {/* Phase 3: Image picker button */}
+            {/* Image picker button */}
             <TouchableOpacity 
               onPress={pickImage}
               style={styles.imageButton}
@@ -260,7 +285,7 @@ export default function ChatScreen({ route, navigation }: Props) {
               {isUploadingImage ? (
                 <ActivityIndicator size="small" color="#007AFF" />
               ) : (
-                <Text style={styles.imageButtonText}>📷</Text>
+                <Text style={{ fontSize: 24 }}>📷</Text>
               )}
             </TouchableOpacity>
 
@@ -279,6 +304,31 @@ export default function ChatScreen({ route, navigation }: Props) {
           </View>
         </>
       )}
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={selectedImage !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableOpacity 
+            style={styles.closeButton}
+            onPress={() => setSelectedImage(null)}
+          >
+            <Icon name="x" size={30} color="white" />
+          </TouchableOpacity>
+          
+          {selectedImage && (
+            <Image 
+              source={{ uri: selectedImage }} 
+              style={styles.fullImage} 
+              resizeMode="contain" 
+            />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -321,11 +371,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     marginRight: 10,
+    marginLeft: 10,
     padding: 8,
     borderRadius: 6,
     backgroundColor: '#fff',
   },
-  // Phase 2: New styles for offline/loading states
   offlineBar: {
     backgroundColor: '#ff9800',
     padding: 10,
@@ -346,12 +396,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  // Phase 3: Image styles
   messageImage: {
     width: 200,
     height: 200,
     borderRadius: 8,
     marginVertical: 8,
+    backgroundColor: '#f0f0f0',
   },
   imageButton: {
     width: 40,
@@ -360,9 +410,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f0f0f0',
     borderRadius: 20,
-    marginRight: 10,
   },
-  imageButtonText: {
-    fontSize: 24,
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1,
+    padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+  },
+  fullImage: {
+    width: '100%',
+    height: '80%',
   },
 });
